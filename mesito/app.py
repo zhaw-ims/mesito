@@ -2,11 +2,10 @@
 
 # pylint: disable=invalid-name
 # pylint: disable=no-member
-from typing import Union, Tuple, Any
+from typing import Any
 
 import flask
-import gevent.pywsgi  # pylint: disable=unused-import
-import sqlalchemy.orm  # pylint: disable=unused-import
+import sqlalchemy.orm
 
 import mesito.route
 
