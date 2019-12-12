@@ -1,6 +1,12 @@
 mesito
 ======
 
+.. image:: https://travis-ci.com/zhaw-ims/mesito.svg?branch=master
+    :target: https://travis-ci.com/zhaw-ims/mesito
+
+.. image:: https://coveralls.io/repos/github/zhaw-ims/mesito/badge.svg?branch=master
+    :target: https://coveralls.io/github/zhaw-ims/mesito
+
 Mesito provides a minimalist Manufacturing Execution System (MES).
 
 
