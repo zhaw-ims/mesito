@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+
+"""Provide a minimalist Manufacturing Execution System (MES)."""
+
+import sys
+
+import mesito.main
+
+if __name__ == "__main__":
+    sys.exit(mesito.main.main())
+

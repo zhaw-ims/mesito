@@ -1,0 +1,12 @@
+[BASIC]
+good-names=i
+
+[TYPECHECK]
+ignored-modules = numpy,cv2
+ignored-classes = numpy,PurePath
+
+[FORMAT]
+max-line-length=80
+
+[MESSAGES CONTROL]
+disable=too-few-public-methods,abstract-class-little-used,len-as-condition,bad-continuation,bad-whitespace,no-else-return,duplicate-code,too-many-locals,too-many-branches,too-many-arguments,anomalous-backslash-in-string,too-many-lines,too-many-statements,no-else-raise,no-else-break,no-member

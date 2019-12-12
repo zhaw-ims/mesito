@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+
+"""Set up mesito."""
+
+import sys
+
+import mesito.setup
+
+if __name__ == "__main__":
+    sys.exit(mesito.setup.main())
