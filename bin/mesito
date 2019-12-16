@@ -7,5 +7,5 @@ import sys
 import mesito.main
 
 if __name__ == "__main__":
-    sys.exit(mesito.main.main())
+    sys.exit(mesito.main.main(sys.argv[1:]))
 

@@ -40,6 +40,22 @@ def assert_response_type(resp: Any) -> flask.wrappers.Response:
     return resp
 
 
+class TestStatic(unittest.TestCase):
+    def test_root(self) -> None:
+        with client_fixture() as client:
+            resp = assert_response_type(client.get('/'))
+
+            with contextlib.closing(resp):
+                self.assertEqual(200, resp.status_code)
+
+    def test_index_html(self) -> None:
+        with client_fixture() as client:
+            resp = assert_response_type(client.get('/index.html'))
+
+            with contextlib.closing(resp):
+                self.assertEqual(200, resp.status_code)
+
+
 class TestMachines(unittest.TestCase):
     def test_machines_on_empty(self) -> None:
         with client_fixture() as client:
@@ -47,6 +63,28 @@ class TestMachines(unittest.TestCase):
             self.assertEqual(200, resp.status_code)
 
             self.assertListEqual([], resp.json)
+
+    def test_put_machine_fails_with_nonjson(self) -> None:
+        with client_fixture() as client:
+            resp = assert_response_type(
+                client.post('/api/v1/put_machine', data='so not json'))
+            self.assertEqual(400, resp.status_code)
+            self.assertEqual({
+                'what': 'SchemaViolation',
+                'why': 'data must be object'
+            }, resp.json)
+
+    def test_put_machine_fails_with_schema_violation(self) -> None:
+        with client_fixture() as client:
+            resp = assert_response_type(
+                client.post(
+                    '/api/v1/put_machine',
+                    json={'some invalid key': 'some invalid value'}))
+            self.assertEqual(400, resp.status_code)
+            self.assertEqual({
+                'what': 'SchemaViolation',
+                'why': "data must contain ['name'] properties"
+            }, resp.json)
 
     def test_insert_new_machine(self) -> None:
         with client_fixture() as client:
@@ -83,6 +121,24 @@ class TestMachines(unittest.TestCase):
             self.assertEqual(200, resp.status_code)
             self.assertListEqual([[1, 'renamed-machine']], resp.json)
 
+    def test_renaming_non_existing_machine_fails(self) -> None:
+        with client_fixture() as client:
+            resp = assert_response_type(
+                client.post(
+                    '/api/v1/put_machine',
+                    json={
+                        'id': 1,
+                        'name': 'renamed-machine'
+                    }))
+
+            self.assertEqual(400, resp.status_code)
+            self.assertEqual({
+                'what': 'MachineNotFound',
+                'why': {
+                    'machine_id': 1
+                }
+            }, resp.json)
+
 
 class TestMachineState(unittest.TestCase):
     def test_that_it_works(self) -> None:
@@ -105,6 +161,48 @@ class TestMachineState(unittest.TestCase):
                     }))
             self.assertEqual(200, resp.status_code)
             self.assertEqual(1, resp.json)
+
+    def test_put_machine_state_fails_with_nonjson(self) -> None:
+        with client_fixture() as client:
+            resp = assert_response_type(
+                client.post('/api/v1/put_machine_state', data="so not json"))
+            self.assertEqual(400, resp.status_code)
+            self.assertEqual({
+                'what': 'SchemaViolation',
+                'why': 'data must be object'
+            }, resp.json)
+
+    def test_put_machine_state_fails_with_schema_violation(self) -> None:
+        with client_fixture() as client:
+            resp = assert_response_type(
+                client.post(
+                    '/api/v1/put_machine_state',
+                    json={"an_invalid_key": "some invalid value"}))
+            self.assertEqual(400, resp.status_code)
+            self.assertEqual({
+                'what':
+                'SchemaViolation',
+                'why':
+                "data must contain ['machine_id', 'start', 'stop', "
+                "'condition'] properties"
+            }, resp.json)
+
+    def test_put_machine_state_fails_for_start_after_stop(self) -> None:
+        with client_fixture() as client:
+            resp = assert_response_type(
+                client.post(
+                    '/api/v1/put_machine_state',
+                    json={
+                        "machine_id": 1984,
+                        "start": 3000,
+                        "stop": 2000,
+                        "condition": mesito.model.MachineCondition.WORKING.value
+                    }))
+            self.assertEqual(400, resp.status_code)
+            self.assertEqual({
+                'what': 'ConstraintViolation',
+                'why': 'stop before start'
+            }, resp.json)
 
     def test_machine_doesnt_exist(self) -> None:
         with client_fixture() as client:
