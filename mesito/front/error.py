@@ -9,7 +9,16 @@ Use factory methods to create the errors.
 
 from typing_extensions import TypedDict
 
-SchemaViolation = TypedDict('SchemaViolation', {'what': str, 'why': str})
+
+class SchemaViolation(TypedDict):
+    """
+    Represent a schema violation of the input.
+
+    Produce with :func:`schema_violation`.
+    """
+
+    what: str
+    why: str
 
 
 def schema_violation(why: str) -> SchemaViolation:
@@ -17,11 +26,15 @@ def schema_violation(why: str) -> SchemaViolation:
     return {'what': SchemaViolation.__name__, 'why': why}
 
 
-ConstraintViolation = TypedDict(
-    'ConstraintViolation', {
-        'what': str,
-        'why': str
-    })
+class ConstraintViolation(TypedDict):
+    """
+    Represent a constraint violation in the input.
+
+    Produce with :func:`constraint_violation`.
+    """
+
+    what: str
+    why: str
 
 
 def constraint_violation(why: str) -> ConstraintViolation:
@@ -29,42 +42,52 @@ def constraint_violation(why: str) -> ConstraintViolation:
     return {'what': ConstraintViolation.__name__, 'why': why}
 
 
-_MachineStateOverlapWhy = TypedDict(
-    '_MachineStateOverlapWhy', {
-        'start': int,
-        'stop': int,
-        'machine_id': int
-    })
+class _MachineStateOverlapWhy(TypedDict):
+    """Represent the conflicting state in an overlap of two machine states."""
 
-MachineStateOverlap = TypedDict(
-    'MachineStateOverlap', {
-        'what': str,
-        'why': _MachineStateOverlapWhy
-    })
+    start: int
+    stop: int
+    machine_id: int
+
+
+class MachineStateOverlap(TypedDict):
+    """
+    Represent an time overlap of two machine states.
+
+    Produce with :func:`machine_state_overlap`.
+    """
+
+    what: str
+    why: _MachineStateOverlapWhy
 
 
 def machine_state_overlap(
         start: int, stop: int, machine_id: int) -> MachineStateOverlap:
     """Indicate that two machine states overlap in time."""
     return {
-        'what':
-        MachineStateOverlap.__name__,
-        'why':
-        _MachineStateOverlapWhy(start=start, stop=stop, machine_id=machine_id)
+        'what': MachineStateOverlap.__name__,
+        'why': {
+            'start': start,
+            'stop': stop,
+            'machine_id': machine_id
+        }
     }
 
 
-_MachineStateConditionChangedWhy = TypedDict(
-    '_MachineStateConditionChangedWhy', {
-        'old': str,
-        'new': str
-    })
+class _MachineStateConditionChangedWhy(TypedDict):
+    old: str
+    new: str
 
-MachineStateConditionChanged = TypedDict(
-    'MachineStateConditionChanged', {
-        'what': str,
-        'why': _MachineStateConditionChangedWhy
-    })
+
+class MachineStateConditionChanged(TypedDict):
+    """
+    Represent an unexpected change of machine condition.
+
+    Produce with :func:`machine_state_condition_changed`.
+    """
+
+    what: str
+    why: _MachineStateConditionChangedWhy
 
 
 def machine_state_condition_changed(
@@ -79,13 +102,19 @@ def machine_state_condition_changed(
     }
 
 
-_MachineNotFound = TypedDict('_MachineNotFound', {'machine_id': int})
+class _MachineNotFoundWhy(TypedDict):
+    machine_id: int
 
-MachineNotFound = TypedDict(
-    'MachineNotFound', {
-        'what': str,
-        'why': _MachineNotFound
-    })
+
+class MachineNotFound(TypedDict):
+    """
+    Represent an error when a given machine in the input does not exist.
+
+    Produce with :func:`machine_not_found`.
+    """
+
+    what: str
+    why: _MachineNotFoundWhy
 
 
 def machine_not_found(machine_id: int) -> MachineNotFound:

@@ -29,18 +29,19 @@ _machine_put = fastjsonschema.compile({
     'required': ['name']
 })
 
-_MachinePutMandatory = TypedDict('_MachinePutMandatory', {'name': str})
 
-_MachinePutOptional = TypedDict('_MachinePutOptional', {'id': int}, total=False)
+class _MachinePutMandatory(TypedDict):
+    name: str
 
 
-class MachinePut(_MachinePutMandatory, _MachinePutOptional):
+class MachinePut(_MachinePutMandatory, total=False):
     """
-    Represent a request to put a machine.
+    Define a request to upsert a machine.
 
-    For rationale behind multiple inheritance, see:
-    https://github.com/python/mypy/issues/7507#issuecomment-531756742
+    Produce with :func:`machine_put`.
     """
+
+    id: int
 
 
 # yapf: disable
@@ -109,32 +110,27 @@ _machine_state_put = fastjsonschema.compile({
     },
     'required': ['machine_id', 'start', 'stop', 'condition']
 })
-_MachineStatePutMandatory = TypedDict(
-    '_MachineStatePutMandatory', {
-        'machine_id': int,
-        'start': int,
-        'stop': int,
-        'condition': str
-    })
-
-_MachineStatePutOptional = TypedDict(
-    '_MachineStatePutOptional', {
-        'min_power_consumption': float,
-        'max_power_consumption': float,
-        'avg_power_consumption': float,
-        'total_energy': float,
-        'pieces': int
-    },
-    total=False)
 
 
-class MachineStatePut(_MachineStatePutMandatory, _MachineStatePutOptional):
+class _MachineStatePutMandatory(TypedDict):
+    machine_id: int
+    start: int
+    stop: int
+    condition: str
+
+
+class MachineStatePut(_MachineStatePutMandatory, total=False):
     """
-    Represent a request to put a machine.
+    Define a request to update the state of the machine.
 
-    For rationale behind multiple inheritance, see:
-    https://github.com/python/mypy/issues/7507#issuecomment-531756742
+    Produce with :func:`machine_state_put`.
     """
+
+    min_power_consumption: float
+    max_power_consumption: float
+    avg_power_consumption: float
+    total_energy: float
+    pieces: int
 
 
 # yapf: disable
