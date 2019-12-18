@@ -2,13 +2,10 @@
 import enum
 
 import sqlalchemy.ext.declarative
-import sqlalchemy
-
 # These "from ..." imports are necessary for readability even though
 # they are against the general coding guidelines.
 from sqlalchemy import (
     Column, Integer, String, ForeignKey, BigInteger, Index, Float)
-from sqlalchemy.orm import relationship
 
 Base = sqlalchemy.ext.declarative.declarative_base()
 
@@ -18,10 +15,8 @@ class Machine(Base):  # type: ignore
 
     __tablename__ = 'machine'
 
-    id = Column(Integer, primary_key=True)
-    name = Column(String(256), unique=True, nullable=False, index=True)
-
-    works = relationship('MachineState', backref='machine', lazy=True)
+    id = Column('id', Integer, primary_key=True)
+    name = Column('name', String(256), unique=True, nullable=False, index=True)
 
 
 class MachineCondition(enum.Enum):
@@ -41,18 +36,23 @@ class MachineState(Base):  # type: ignore
 
     __tablename__ = 'machine_state'
 
-    id = Column(Integer, primary_key=True)
-    machine_id = Column(Integer, ForeignKey('machine.id'), nullable=False)
-    start = Column(BigInteger, nullable=False, index=True)
-    stop = Column(BigInteger, nullable=False, index=True)
+    id = Column('id', Integer, primary_key=True)
+    machine_id = Column(
+        'machine_id', Integer, ForeignKey('machine.id'), nullable=False)
+    start = Column('start', BigInteger, nullable=False, index=True)
+    stop = Column('stop', BigInteger, nullable=False, index=True)
     condition = Column(
+        'condition',
         sqlalchemy.Enum(*[cond.value for cond in MachineCondition]),
         nullable=False)
-    min_power_consumption = Column(Float, nullable=True)
-    max_power_consumption = Column(Float, nullable=True)
-    avg_power_consumption = Column(Float, nullable=True)
-    total_energy = Column(Float, nullable=True)
-    pieces = Column(Integer, nullable=True)
+    min_power_consumption = Column(
+        'min_power_consumption', Float, nullable=True)
+    max_power_consumption = Column(
+        'max_power_consumption', Float, nullable=True)
+    avg_power_consumption = Column(
+        'avg_power_consumption', Float, nullable=True)
+    total_energy = Column('total_energy', Float, nullable=True)
+    pieces = Column('pieces', Integer, nullable=True)
 
 
 Index('machine_state_start', MachineState.machine_id, MachineState.start)
