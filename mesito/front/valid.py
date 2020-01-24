@@ -4,6 +4,7 @@ from typing import Any, Tuple, Optional, Union
 
 import fastjsonschema
 from typing_extensions import TypedDict
+from icontract._decorators import require
 
 import mesito.front.error
 import mesito.model
@@ -16,10 +17,10 @@ _machine_put = fastjsonschema.compile({
     'properties': {
         'id': {
             'type':
-            'integer',
+                'integer',
             'description':
-            'machine ID; '
-            'if not provided, a new machine should be created.'
+                'machine ID; '
+                'if not provided, a new machine should be created.'
         },
         'name': {
             'type': 'string',
@@ -61,6 +62,25 @@ def machine_put(
         return typing.cast(MachinePut, data), None
     except fastjsonschema.JsonSchemaException as err:
         return None, mesito.front.error.schema_violation(why=str(err))
+
+
+class MachinePutEmit(_MachinePutMandatory):
+    """
+    Represent an event emitted when a machine changed.
+
+    Produce with :func:`machine_put_emit`
+    """
+
+    id: int
+
+
+@require(lambda data, id: "id" not in data or id == data["id"])
+def machine_put_emit(data: MachinePut, id: int) -> MachinePutEmit:
+    """Cast the machine put request into an event to be emitted."""
+    result = data
+    result["id"] = id
+
+    return result
 
 
 _machine_state_put = fastjsonschema.compile({

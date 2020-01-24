@@ -6,6 +6,7 @@ import sqlalchemy.orm
 import mesito.front.error
 import mesito.front.valid
 import mesito.model
+import mesito.front.out
 
 
 # yapf: disable
@@ -37,12 +38,14 @@ def put_machine(
     return machine.id, None
 
 
-def get_machines(session: sqlalchemy.orm.Session) -> List[Tuple[int, str]]:
+def get_machines(
+        session: sqlalchemy.orm.Session
+) -> List[mesito.front.out.Machine]:
     """Retrieve the mapping (id -> name) of all the machines."""
-    result = []  # type: List[Tuple[int, str]]
+    result = []  # type: List[mesito.front.out.Machine]
     for machine in session.query(mesito.model.Machine).order_by(
             mesito.model.Machine.name.asc()).all():
-        result.append((machine.id, machine.name))
+        result.append({"id": machine.id, "name": machine.name})
 
     return result
 
@@ -150,7 +153,7 @@ def put_machine_state(
 
     other_start_stop = machine_state_overlap(
         machine_id=data['machine_id'], start=data['start'],
-                             stop=data['stop'], session=session)
+        stop=data['stop'], session=session)
 
     if other_start_stop is not None:
         other_start, other_stop = other_start_stop

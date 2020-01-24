@@ -2,9 +2,11 @@
 
 # pylint: disable=invalid-name
 # pylint: disable=no-member
-from typing import Any
+from typing import Any, Optional, Tuple
 
 import flask
+import flask_socketio
+import flask_cors
 import sqlalchemy.orm
 
 import mesito.route
@@ -22,7 +24,7 @@ def _v1_api_blueprint(
 
     blueprint.route(
         '/put_machine', methods=['POST'], endpoint='put_machine')(
-            lambda: mesito.route.put_machine(session_factory=session_factory))
+        lambda: mesito.route.put_machine(session_factory=session_factory))
 
     blueprint.route(
         '/machines', methods=['POST'], endpoint='machines'
@@ -50,12 +52,17 @@ def _static_blueprint() -> flask.Blueprint:
 
     return blueprint
 
-
-def produce(session_factory: sqlalchemy.orm.scoped_session) -> flask.Flask:
+# yapf: disable
+def produce(
+        session_factory: sqlalchemy.orm.scoped_session,
+        cors_allowed_all_origins: bool
+) -> Tuple[flask.Flask, flask_socketio.SocketIO]:  # yapf: enable
     """
     Produce our flask application.
 
     :param session_factory: SQLAlchemy session factory
+    :param cors_allowed_origins:
+        if set, changes the CORS allowed origins of the app to everybody
     :return: flask application
     """
     app = flask.Flask(__name__)
@@ -66,10 +73,21 @@ def produce(session_factory: sqlalchemy.orm.scoped_session) -> flask.Flask:
     static = _static_blueprint()
     app.register_blueprint(static)
 
-    def cleanup(resp_or_exc: Any) -> Any:  # pylint: disable=unused-argument, unused-variable
+    if cors_allowed_all_origins:
+        flask_cors.CORS(app)
+        socketio = flask_socketio.SocketIO(app=app, cors_allowed_origins="*")
+    else:
+        socketio = flask_socketio.SocketIO(app=app)
+
+    @socketio.on('machine_change')
+    def handle_message(message):
+        socketio.emit('machine_change', message , broadcast=True)
+
+    def cleanup(
+            resp_or_exc: Any) -> Any:  # pylint: disable=unused-argument, unused-variable
         """Release resources acquired in an app context."""
         session_factory.remove()
 
     app.teardown_appcontext(cleanup)
 
-    return app
+    return app, socketio

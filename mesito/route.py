@@ -2,6 +2,7 @@
 from typing import Any
 
 import flask
+import flask_socketio
 import sqlalchemy.orm
 
 import mesito.front.valid
@@ -24,6 +25,13 @@ def put_machine(session_factory: sqlalchemy.orm.scoped_session) -> Any:  # pylin
 
     if global_err is not None:
         return flask.jsonify(global_err), 400
+
+    assert machine_id is not None, \
+        "Expected machine ID to be set on successful operation"
+
+    emission = mesito.front.valid.machine_put_emit(data=data, id=machine_id)
+
+    flask_socketio.emit("put_machine", emission, broadcast=True, namespace="/")
 
     return flask.jsonify(machine_id), 200
 

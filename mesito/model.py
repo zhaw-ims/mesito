@@ -16,7 +16,7 @@ class Machine(Base):  # type: ignore
     __tablename__ = 'machine'
 
     id = Column('id', Integer, primary_key=True)
-    name = Column('name', String(256), unique=True, nullable=False, index=True)
+    name = Column('name', String(256), nullable=False, index=True)
 
 
 class MachineCondition(enum.Enum):

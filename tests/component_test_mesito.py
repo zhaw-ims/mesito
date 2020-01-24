@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 import time
 
+import requests
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -55,20 +57,25 @@ def main() -> None:
             coverage_prefix + [
                 'bin/mesito',
                 '--port', str(port),
-                '--database_url', database_url],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
+                '--database_url', database_url,
+                '--cors_allowed_all_origins'])
         # yapf: enable
 
         logging.info('Waiting for the server to start...')
-        while True:
-            errline = proc.stderr.readline().decode()
-            if errline.endswith('Server started.\n'):
-                break
+        time.sleep(2)
 
-            # The process exited unexpectedly.
-            if proc.poll() is not None:
-                break
+        logging.info('Adding machines...')
+        machine_id = requests.post(
+            'http://localhost:{}/api/v1/put_machine'.format(port),
+            json={'name': 'Some Machine'}).json()
+
+        logging.info('Added a machine with the ID: {}'.format(machine_id))
+
+        machine_id = requests.post(
+            'http://localhost:{}/api/v1/put_machine'.format(port),
+            json={'name': 'Another Machine'}).json()
+
+        logging.info('Added a machine with the ID: {}'.format(machine_id))
 
         ##
         # Terminate
@@ -82,10 +89,7 @@ def main() -> None:
             logging.info("Shutting down...")
             proc.terminate()
 
-            _, stderr = proc.communicate()
-
             if proc.returncode != 0:
-                print(stderr.decode())
                 raise AssertionError((
                     "Unexpected termination of the process "
                     "with return code: {}").format(proc.returncode))
