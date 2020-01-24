@@ -93,11 +93,15 @@ class TestMachines(unittest.TestCase):
                 client.post(
                     '/api/v1/put_machine', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertEqual(1, resp.json)
+            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
 
             resp = assert_response_type(client.post('/api/v1/machines'))
             self.assertEqual(200, resp.status_code)
-            self.assertListEqual([{"id": 1, "name": "some-machine"}], resp.json)
+            self.assertListEqual([{
+                "id": 1,
+                "name": "some-machine",
+                "version": 1
+            }], resp.json)
 
     def test_rename_machine(self) -> None:
         with client_fixture() as client:
@@ -105,7 +109,7 @@ class TestMachines(unittest.TestCase):
                 client.post(
                     '/api/v1/put_machine', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertEqual(1, resp.json)
+            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
 
             resp = assert_response_type(
                 client.post(
@@ -116,13 +120,14 @@ class TestMachines(unittest.TestCase):
                     }))
 
             self.assertEqual(200, resp.status_code)
-            self.assertEqual(1, resp.json)
+            self.assertDictEqual({"id": 1, "version": 2}, resp.json)
 
             resp = assert_response_type(client.post('/api/v1/machines'))
             self.assertEqual(200, resp.status_code)
             self.assertListEqual([{
                 "id": 1,
-                "name": "renamed-machine"
+                "name": "renamed-machine",
+                "version": 2
             }], resp.json)
 
     def test_renaming_non_existing_machine_fails(self) -> None:
@@ -151,8 +156,8 @@ class TestMachineState(unittest.TestCase):
                 client.post(
                     '/api/v1/put_machine', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertEqual(1, resp.json)
-            machine_id = resp.json
+            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
+            machine_id = resp.json['id']
 
             resp = assert_response_type(
                 client.post(
@@ -234,8 +239,8 @@ class TestMachineState(unittest.TestCase):
                 client.post(
                     '/api/v1/put_machine', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertEqual(1, resp.json)
-            machine_id = resp.json
+            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
+            machine_id = resp.json['id']
 
             # add a state
             resp = assert_response_type(
@@ -277,8 +282,8 @@ class TestMachineState(unittest.TestCase):
                 client.post(
                     '/api/v1/put_machine', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertEqual(1, resp.json)
-            machine_id = resp.json
+            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
+            machine_id = resp.json['id']
 
             # add a state
             resp = assert_response_type(
@@ -320,8 +325,8 @@ class TestMachineState(unittest.TestCase):
                 client.post(
                     '/api/v1/put_machine', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertEqual(1, resp.json)
-            machine_id = resp.json
+            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
+            machine_id = resp.json['id']
 
             # add a state
             resp = assert_response_type(
@@ -363,8 +368,8 @@ class TestMachineState(unittest.TestCase):
                 client.post(
                     '/api/v1/put_machine', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertEqual(1, resp.json)
-            machine_id = resp.json
+            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
+            machine_id = resp.json['id']
 
             # add a state
             resp = assert_response_type(
@@ -406,8 +411,8 @@ class TestMachineState(unittest.TestCase):
                 client.post(
                     '/api/v1/put_machine', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertEqual(1, resp.json)
-            machine_id = resp.json
+            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
+            machine_id = resp.json["id"]
 
             # add a state
             resp = assert_response_type(
@@ -442,8 +447,8 @@ class TestMachineState(unittest.TestCase):
                 client.post(
                     '/api/v1/put_machine', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertEqual(1, resp.json)
-            machine_id = resp.json
+            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
+            machine_id = resp.json['id']
 
             # add a state
             resp = assert_response_type(
@@ -478,8 +483,8 @@ class TestMachineState(unittest.TestCase):
                 client.post(
                     '/api/v1/put_machine', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertEqual(1, resp.json)
-            machine_id = resp.json
+            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
+            machine_id = resp.json['id']
 
             # add a state
             resp = assert_response_type(

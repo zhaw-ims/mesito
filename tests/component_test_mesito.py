@@ -65,19 +65,21 @@ def main() -> None:
         time.sleep(5)
 
         logging.info('Adding machines...')
-        machine_id = requests.post(
+        resp = requests.post(
             'http://localhost:{}/api/v1/put_machine'.format(port),
             json={
                 'name': 'Some Machine'
             }).json()
+        machine_id = resp['id']
 
         logging.info('Added a machine with the ID: %d', machine_id)
 
-        machine_id = requests.post(
+        resp = requests.post(
             'http://localhost:{}/api/v1/put_machine'.format(port),
             json={
                 'name': 'Another Machine'
             }).json()
+        machine_id = resp['id']
 
         logging.info('Added a machine with the ID: %d', machine_id)
 

@@ -21,21 +21,24 @@ def put_machine(session_factory: sqlalchemy.orm.scoped_session) -> Any:  # pylin
 
     assert data is not None
 
-    machine_id, global_err = mesito.operation.put_machine(
+    machine_id_version, global_err = mesito.operation.put_machine(
         session=session, data=data)
 
     if global_err is not None:
         return flask.jsonify(global_err), 400
 
+    assert machine_id_version is not None
+    machine_id, version = machine_id_version
+
     assert machine_id is not None, \
         "Expected machine ID to be set on successful operation"
 
-    emission = mesito.front.out.machine_put_emit_from_input(
-        data=data, id=machine_id)
+    emission = mesito.front.out.machine_put_emit(
+        id=machine_id, name=data["name"], version=version)
 
     flask_socketio.emit("put_machine", emission, broadcast=True, namespace="/")
 
-    return flask.jsonify(machine_id), 200
+    return flask.jsonify({'id': machine_id, 'version': version}), 200
 
 
 def serve_machines(session_factory: sqlalchemy.orm.scoped_session) -> Any:  # pylint: disable=unused-variable

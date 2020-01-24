@@ -17,6 +17,7 @@ class Machine(Base):  # type: ignore
 
     id = Column('id', Integer, primary_key=True)
     name = Column('name', String(256), nullable=False, index=True)
+    version = Column('version', Integer, nullable=False)
 
 
 class MachineCondition(enum.Enum):

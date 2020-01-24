@@ -2,23 +2,39 @@
 from typing import List, Tuple, Optional, Union
 
 import sqlalchemy.orm
+from icontract._decorators import ensure
 
 import mesito.front.error
+import mesito.front.out
 import mesito.front.valid
 import mesito.model
-import mesito.front.out
 
 
 # yapf: disable
+@ensure(
+    lambda data, result:
+    'id' not in data or result[1] is not None or result[0][0] == data['id'],
+    'ID must not change in the result if already available in the input.'
+)
+@ensure(
+    lambda data, result:
+    'id' in data or result[1] is not None or result[0][1] == 1,
+    'Version starts from 1 on new instances.'
+)
 def put_machine(
         session: sqlalchemy.orm.Session,
         data: mesito.front.valid.MachinePut
 ) -> Tuple[
-    Optional[int],
+    Optional[Tuple[int, int]],
     Optional[mesito.front.error.MachineNotFound]]:  # yapf: enable
-    """Upsert the machine into the database and return the machine ID."""
-    # pylint: disable=invalid-name
+    """
+    Upsert the machine into the database.
 
+    :param session: transaction to the database
+    :param data: machine data
+    :return: (ID, version), error if any
+    """
+    # pylint: disable=invalid-name
     if 'id' in data:
         machine = session.query(mesito.model.Machine).get(data['id'])
         if machine is None:
@@ -26,26 +42,31 @@ def put_machine(
                 machine_id=data['id'])
 
         machine.name = data['name']
+        machine.version += 1
     else:
         machine = mesito.model.Machine()
         machine.name = data['name']
+        machine.version = 1
         session.add(machine)
 
     session.commit()
 
     assert isinstance(machine.id, int)
 
-    return machine.id, None
+    return (machine.id, machine.version), None
 
 
+# yapf: disable
 def get_machines(
         session: sqlalchemy.orm.Session
-) -> List[mesito.front.out.Machine]:
+) -> List[mesito.front.out.Machine]:  # yapf: enable
     """Retrieve the mapping (id -> name) of all the machines."""
     result = []  # type: List[mesito.front.out.Machine]
     for machine in session.query(mesito.model.Machine).order_by(
             mesito.model.Machine.name.asc()).all():
-        result.append({"id": machine.id, "name": machine.name})
+        result.append(
+            mesito.front.out.machine(
+                id=machine.id, name=machine.name, version=machine.version))
 
     return result
 
