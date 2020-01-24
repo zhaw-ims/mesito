@@ -62,7 +62,6 @@ def machine_put(
     except fastjsonschema.JsonSchemaException as err:
         return None, mesito.front.error.schema_violation(why=str(err))
 
-
 _machine_state_put = fastjsonschema.compile({
     'type':
         'object',

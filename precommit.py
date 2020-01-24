@@ -80,7 +80,7 @@ def main() -> int:
     # yapf: disable
     subprocess.check_call(
         ['tests/component_test_mesito.py',
-         '--port', '0',
+         '--port', '8000',
          '--with_coverage'],
         cwd=str(src_root),
         env=env)  # yapf: enable

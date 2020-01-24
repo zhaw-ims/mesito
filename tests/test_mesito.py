@@ -28,7 +28,8 @@ def client_fixture() -> Iterator[flask.testing.FlaskClient]:  # type: ignore
     session_factory = sqlalchemy.orm.scoped_session(
         sqlalchemy.orm.sessionmaker(bind=engine))
 
-    app = mesito.app.produce(session_factory=session_factory)
+    app, _ = mesito.app.produce(
+        session_factory=session_factory, cors_allowed_all_origins=False)
 
     with app.test_client() as client:
         yield client
@@ -96,7 +97,7 @@ class TestMachines(unittest.TestCase):
 
             resp = assert_response_type(client.post('/api/v1/machines'))
             self.assertEqual(200, resp.status_code)
-            self.assertListEqual([[1, 'some-machine']], resp.json)
+            self.assertListEqual([{"id": 1, "name": "some-machine"}], resp.json)
 
     def test_rename_machine(self) -> None:
         with client_fixture() as client:
@@ -119,7 +120,10 @@ class TestMachines(unittest.TestCase):
 
             resp = assert_response_type(client.post('/api/v1/machines'))
             self.assertEqual(200, resp.status_code)
-            self.assertListEqual([[1, 'renamed-machine']], resp.json)
+            self.assertListEqual([{
+                "id": 1,
+                "name": "renamed-machine"
+            }], resp.json)
 
     def test_renaming_non_existing_machine_fails(self) -> None:
         with client_fixture() as client:
