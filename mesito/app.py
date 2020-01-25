@@ -23,12 +23,22 @@ def _v1_api_blueprint(
     blueprint = flask.Blueprint(name='api_v1', import_name=__name__)
 
     blueprint.route(
-        '/put_machine', methods=['POST'], endpoint='put_machine')(
-            lambda: mesito.route.put_machine(session_factory=session_factory))
+        '/machines', methods=['POST'], endpoint='post_machine')(
+            lambda: mesito.route.post_machine(session_factory=session_factory))
 
     blueprint.route(
-        '/machines', methods=['POST'], endpoint='machines'
-    )(lambda: mesito.route.serve_machines(session_factory=session_factory))
+        '/machines/<int:id>', methods=['PATCH'], endpoint='patch_machine')(
+            lambda id: mesito.route.patch_machine(
+                session_factory=session_factory, id=id))
+
+    blueprint.route(
+        '/machines/<int:id>', methods=['DELETE'], endpoint='delete_machine')(
+            lambda id: mesito.route.delete_machine(
+                session_factory=session_factory, id=id))
+
+    blueprint.route(
+        '/machines', methods=['GET'], endpoint='get_machines')(
+            lambda: mesito.route.get_machines(session_factory=session_factory))
 
     blueprint.route(
         '/put_machine_state', methods=['POST'], endpoint='put_machine_state'

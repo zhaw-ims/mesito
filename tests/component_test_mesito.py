@@ -66,20 +66,22 @@ def main() -> None:
 
         logging.info('Adding machines...')
         resp = requests.post(
-            'http://localhost:{}/api/v1/put_machine'.format(port),
+            'http://localhost:{}/api/v1/machines'.format(port),
             json={
                 'name': 'Some Machine'
             }).json()
-        machine_id = resp['id']
+        assert isinstance(resp, int)
+        machine_id = resp
 
         logging.info('Added a machine with the ID: %d', machine_id)
 
         resp = requests.post(
-            'http://localhost:{}/api/v1/put_machine'.format(port),
+            'http://localhost:{}/api/v1/machines'.format(port),
             json={
                 'name': 'Another Machine'
             }).json()
-        machine_id = resp['id']
+        assert isinstance(resp, int)
+        machine_id = resp
 
         logging.info('Added a machine with the ID: %d', machine_id)
 

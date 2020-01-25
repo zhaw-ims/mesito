@@ -1,5 +1,5 @@
 [BASIC]
-good-names=i
+good-names=i,id
 
 [TYPECHECK]
 ignored-modules = numpy,cv2

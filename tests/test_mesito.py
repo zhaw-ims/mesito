@@ -3,10 +3,11 @@
 # pylint: disable=missing-docstring
 import contextlib
 import unittest
-from typing import Any, Iterator
+from typing import Any, Iterator, Tuple
 
 import flask.testing
 import flask.wrappers
+import flask_socketio
 import sqlalchemy
 import sqlalchemy.orm
 
@@ -15,8 +16,14 @@ import mesito.model
 import mesito.operation
 
 
+# yapf: disable
 @contextlib.contextmanager
-def client_fixture() -> Iterator[flask.testing.FlaskClient]:  # type: ignore
+def client_fixture(
+) -> Iterator[  # type: ignore
+    Tuple[
+        flask.testing.FlaskClient,
+        flask_socketio.SocketIOTestClient]]:
+    # yapf: enable
     """Create and tear down a temporary client."""
     # See https://docs.sqlalchemy.org/en/13/dialects/sqlite.html#connect-strings
     database_url = 'sqlite://'
@@ -28,11 +35,20 @@ def client_fixture() -> Iterator[flask.testing.FlaskClient]:  # type: ignore
     session_factory = sqlalchemy.orm.scoped_session(
         sqlalchemy.orm.sessionmaker(bind=engine))
 
-    app, _ = mesito.app.produce(
+    app, socketio = mesito.app.produce(
         session_factory=session_factory, cors_allowed_all_origins=False)
 
-    with app.test_client() as client:
-        yield client
+    with contextlib.ExitStack() as exit_stack:
+        client = app.test_client()
+        exit_stack.push(client)
+
+        websocket = flask_socketio.SocketIOTestClient(
+            app=app, socketio=socketio, flask_test_client=client)
+        websocket.connect()
+
+        exit_stack.callback(websocket.disconnect)
+
+        yield client, websocket
 
 
 def assert_response_type(resp: Any) -> flask.wrappers.Response:
@@ -43,43 +59,47 @@ def assert_response_type(resp: Any) -> flask.wrappers.Response:
 
 class TestStatic(unittest.TestCase):
     def test_root(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, _):
             resp = assert_response_type(client.get('/'))
 
             with contextlib.closing(resp):
                 self.assertEqual(200, resp.status_code)
 
     def test_index_html(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, _):
             resp = assert_response_type(client.get('/index.html'))
 
             with contextlib.closing(resp):
                 self.assertEqual(200, resp.status_code)
 
 
-class TestMachines(unittest.TestCase):
-    def test_machines_on_empty(self) -> None:
-        with client_fixture() as client:
-            resp = assert_response_type(client.post('/api/v1/machines'))
+class TestGetMachines(unittest.TestCase):
+    def test_on_empty(self) -> None:
+        with client_fixture() as (client, _):
+            resp = assert_response_type(client.get('/api/v1/machines'))
             self.assertEqual(200, resp.status_code)
 
             self.assertListEqual([], resp.json)
 
-    def test_put_machine_fails_with_nonjson(self) -> None:
-        with client_fixture() as client:
+
+class TestPostMachine(unittest.TestCase):
+    def test_fails_with_nonjson(self) -> None:
+        with client_fixture() as (client, websocket):
             resp = assert_response_type(
-                client.post('/api/v1/put_machine', data='so not json'))
+                client.post('/api/v1/machines', data='so not json'))
             self.assertEqual(400, resp.status_code)
             self.assertEqual({
                 'what': 'SchemaViolation',
                 'why': 'data must be object'
             }, resp.json)
 
-    def test_put_machine_fails_with_schema_violation(self) -> None:
-        with client_fixture() as client:
+            self.assertListEqual([], websocket.get_received())
+
+    def test_fails_with_schema_violation(self) -> None:
+        with client_fixture() as (client, websocket):
             resp = assert_response_type(
                 client.post(
-                    '/api/v1/put_machine',
+                    '/api/v1/machines',
                     json={'some invalid key': 'some invalid value'}))
             self.assertEqual(400, resp.status_code)
             self.assertEqual({
@@ -87,15 +107,16 @@ class TestMachines(unittest.TestCase):
                 'why': "data must contain ['name'] properties"
             }, resp.json)
 
-    def test_insert_new_machine(self) -> None:
-        with client_fixture() as client:
-            resp = assert_response_type(
-                client.post(
-                    '/api/v1/put_machine', json={'name': 'some-machine'}))
-            self.assertEqual(200, resp.status_code)
-            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
+            self.assertListEqual([], websocket.get_received())
 
-            resp = assert_response_type(client.post('/api/v1/machines'))
+    def test_ok(self) -> None:
+        with client_fixture() as (client, websocket):
+            resp = assert_response_type(
+                client.post('/api/v1/machines', json={'name': 'some-machine'}))
+            self.assertEqual(200, resp.status_code)
+            self.assertEqual(1, resp.json)
+
+            resp = assert_response_type(client.get('/api/v1/machines'))
             self.assertEqual(200, resp.status_code)
             self.assertListEqual([{
                 "id": 1,
@@ -103,26 +124,70 @@ class TestMachines(unittest.TestCase):
                 "version": 1
             }], resp.json)
 
-    def test_rename_machine(self) -> None:
-        with client_fixture() as client:
+            self.assertListEqual(
+                [{
+                    'name': 'put_machine',
+                    'args': [{
+                        'id': 1,
+                        'name': 'some-machine',
+                        'version': 1
+                    }],
+                    'namespace': '/'
+                }], websocket.get_received())
+
+
+class TestPatchMachine(unittest.TestCase):
+    def test_fails_with_nonjson(self) -> None:
+        with client_fixture() as (client, websocket):
             resp = assert_response_type(
-                client.post(
-                    '/api/v1/put_machine', json={'name': 'some-machine'}))
+                client.patch('/api/v1/machines/1', data="so not JSON"))
+            self.assertEqual(400, resp.status_code)
+            self.assertEqual({
+                'what': 'SchemaViolation',
+                'why': 'data must be object'
+            }, resp.json)
+
+            self.assertListEqual([], websocket.get_received())
+
+    def test_fails_with_schema_violation(self) -> None:
+        with client_fixture() as (client, websocket):
+            resp = assert_response_type(
+                client.patch(
+                    '/api/v1/machines/1',
+                    json={'some invalid key': 'some invalid value'}))
+            self.assertEqual(400, resp.status_code)
+            self.assertEqual(
+                {
+                    'what': 'SchemaViolation',
+                    'why': "data must contain only specified properties"
+                }, resp.json)
+
+            self.assertListEqual([], websocket.get_received())
+
+    def test_rename_machine_ok(self) -> None:
+        with client_fixture() as (client, websocket):
+            resp = assert_response_type(
+                client.post('/api/v1/machines', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
+            self.assertEqual(1, resp.json)
+
+            # yapf: disable
+            self.assertListEqual(
+                [{'name': 'put_machine',
+                  'args': [{'id': 1, 'name': 'some-machine', 'version': 1}],
+                  'namespace': '/'}],
+                websocket.get_received())  # yapf: enable
 
             resp = assert_response_type(
-                client.post(
-                    '/api/v1/put_machine',
+                client.patch(
+                    '/api/v1/machines/1',
                     json={
-                        'id': 1,
                         'name': 'renamed-machine'
                     }))
 
             self.assertEqual(200, resp.status_code)
-            self.assertDictEqual({"id": 1, "version": 2}, resp.json)
 
-            resp = assert_response_type(client.post('/api/v1/machines'))
+            resp = assert_response_type(client.get('/api/v1/machines'))
             self.assertEqual(200, resp.status_code)
             self.assertListEqual([{
                 "id": 1,
@@ -130,13 +195,19 @@ class TestMachines(unittest.TestCase):
                 "version": 2
             }], resp.json)
 
+            # yapf: disable
+            self.assertListEqual(
+                [{'name': 'put_machine',
+                  'args': [{'id': 1, 'version': 2, 'name': 'renamed-machine'}],
+                  'namespace': '/'}],
+                websocket.get_received())  # yapf: enable
+
     def test_renaming_non_existing_machine_fails(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, websocket):
             resp = assert_response_type(
-                client.post(
-                    '/api/v1/put_machine',
+                client.patch(
+                    '/api/v1/machines/1',
                     json={
-                        'id': 1,
                         'name': 'renamed-machine'
                     }))
 
@@ -148,16 +219,87 @@ class TestMachines(unittest.TestCase):
                 }
             }, resp.json)
 
+            self.assertListEqual([], websocket.get_received())
+
+    def test_empty_patch_fails(self) -> None:
+        with client_fixture() as (client, websocket):
+            resp = assert_response_type(
+                client.post(
+                    '/api/v1/machines', json={'name': 'some-machine'}))
+            self.assertEqual(200, resp.status_code)
+            self.assertEqual(1, resp.json)
+
+            # yapf: disable
+            self.assertListEqual(
+                [{'name': 'put_machine',
+                  'args': [{'id': 1, 'name': 'some-machine', 'version': 1}],
+                  'namespace': '/'}],
+                websocket.get_received())  # yapf: enable
+
+            # Request an empty patch
+            resp = assert_response_type(
+                client.patch(
+                    '/api/v1/machines/1',
+                    json={}))
+
+            self.assertEqual(400, resp.status_code)
+            self.assertEqual(
+                {'what': 'ConstraintViolation', 'why': 'Empty patch'},
+                resp.json)
+
+            self.assertListEqual([], websocket.get_received())
+
+
+class TestDeleteMachine(unittest.TestCase):
+    def test_delete_non_existent_machine_ok(self) -> None:
+        with client_fixture() as (client, websocket):
+            resp = assert_response_type(client.delete('/api/v1/machines/1'))
+            self.assertEqual(200, resp.status_code)
+
+            self.assertListEqual(
+                [{'name': 'delete_machine', 'args': [{'id': 1}],
+                  'namespace': '/'}],
+                websocket.get_received())
+
+    def test_ok(self) -> None:
+        with client_fixture() as (client, websocket):
+            resp = assert_response_type(
+                client.post(
+                    '/api/v1/machines', json={'name': 'some-machine'}))
+            self.assertEqual(200, resp.status_code)
+            self.assertEqual(1, resp.json)
+
+            # yapf: disable
+            self.assertListEqual(
+                [{'name': 'put_machine',
+                  'args': [{'id': 1, 'name': 'some-machine', 'version': 1}],
+                  'namespace': '/'}],
+                websocket.get_received())  # yapf: enable
+
+            resp = assert_response_type(client.delete('/api/v1/machines/1'))
+            self.assertEqual(200, resp.status_code)
+
+            resp = assert_response_type(client.get('/api/v1/machines'))
+            self.assertEqual(200, resp.status_code)
+            self.assertListEqual([], resp.json)
+
+            # yapf: disable
+            self.assertListEqual(
+                [{'name': 'delete_machine',
+                  'args': [{'id': 1}],
+                  'namespace': '/'}],
+                websocket.get_received())  # yapf: enable
+
 
 class TestMachineState(unittest.TestCase):
     def test_that_it_works(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, _):
             resp = assert_response_type(
                 client.post(
-                    '/api/v1/put_machine', json={'name': 'some-machine'}))
+                    '/api/v1/machines', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
-            machine_id = resp.json['id']
+            self.assertEqual(1, resp.json)
+            machine_id = resp.json
 
             resp = assert_response_type(
                 client.post(
@@ -172,7 +314,7 @@ class TestMachineState(unittest.TestCase):
             self.assertEqual(1, resp.json)
 
     def test_put_machine_state_fails_with_nonjson(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, _):
             resp = assert_response_type(
                 client.post('/api/v1/put_machine_state', data="so not json"))
             self.assertEqual(400, resp.status_code)
@@ -182,7 +324,7 @@ class TestMachineState(unittest.TestCase):
             }, resp.json)
 
     def test_put_machine_state_fails_with_schema_violation(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, _):
             resp = assert_response_type(
                 client.post(
                     '/api/v1/put_machine_state',
@@ -190,14 +332,14 @@ class TestMachineState(unittest.TestCase):
             self.assertEqual(400, resp.status_code)
             self.assertEqual({
                 'what':
-                'SchemaViolation',
+                    'SchemaViolation',
                 'why':
-                "data must contain ['machine_id', 'start', 'stop', "
-                "'condition'] properties"
+                    "data must contain ['machine_id', 'start', 'stop', "
+                    "'condition'] properties"
             }, resp.json)
 
     def test_put_machine_state_fails_for_start_after_stop(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, _):
             resp = assert_response_type(
                 client.post(
                     '/api/v1/put_machine_state',
@@ -214,7 +356,7 @@ class TestMachineState(unittest.TestCase):
             }, resp.json)
 
     def test_machine_doesnt_exist(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, _):
             resp = assert_response_type(
                 client.post(
                     '/api/v1/put_machine_state',
@@ -233,14 +375,14 @@ class TestMachineState(unittest.TestCase):
             }, resp.json)
 
     def test_overlap_before(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, _):
             # add a machine
             resp = assert_response_type(
                 client.post(
-                    '/api/v1/put_machine', json={'name': 'some-machine'}))
+                    '/api/v1/machines', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
-            machine_id = resp.json['id']
+            self.assertEqual(1, resp.json)
+            machine_id = resp.json
 
             # add a state
             resp = assert_response_type(
@@ -276,14 +418,14 @@ class TestMachineState(unittest.TestCase):
             }, resp.json)
 
     def test_overlap_after(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, _):
             # add a machine
             resp = assert_response_type(
                 client.post(
-                    '/api/v1/put_machine', json={'name': 'some-machine'}))
+                    '/api/v1/machines', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
-            machine_id = resp.json['id']
+            self.assertEqual(1, resp.json)
+            machine_id = resp.json
 
             # add a state
             resp = assert_response_type(
@@ -319,14 +461,14 @@ class TestMachineState(unittest.TestCase):
             }, resp.json)
 
     def test_overlap_encompassing(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, _):
             # add a machine
             resp = assert_response_type(
                 client.post(
-                    '/api/v1/put_machine', json={'name': 'some-machine'}))
+                    '/api/v1/machines', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
-            machine_id = resp.json['id']
+            self.assertEqual(1, resp.json)
+            machine_id = resp.json
 
             # add a state
             resp = assert_response_type(
@@ -362,14 +504,14 @@ class TestMachineState(unittest.TestCase):
             }, resp.json)
 
     def test_overlap_contained(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, _):
             # add a machine
             resp = assert_response_type(
                 client.post(
-                    '/api/v1/put_machine', json={'name': 'some-machine'}))
+                    '/api/v1/machines', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
-            machine_id = resp.json['id']
+            self.assertEqual(1, resp.json)
+            machine_id = resp.json
 
             # add a state
             resp = assert_response_type(
@@ -405,14 +547,14 @@ class TestMachineState(unittest.TestCase):
             }, resp.json)
 
     def test_prolonged_ok(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, _):
             # add a machine
             resp = assert_response_type(
                 client.post(
-                    '/api/v1/put_machine', json={'name': 'some-machine'}))
+                    '/api/v1/machines', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
-            machine_id = resp.json["id"]
+            self.assertEqual(1, resp.json)
+            machine_id = resp.json
 
             # add a state
             resp = assert_response_type(
@@ -441,14 +583,14 @@ class TestMachineState(unittest.TestCase):
             self.assertEqual(1, resp.json)
 
     def test_repeated_request_ok(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, _):
             # add a machine
             resp = assert_response_type(
                 client.post(
-                    '/api/v1/put_machine', json={'name': 'some-machine'}))
+                    '/api/v1/machines', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
-            machine_id = resp.json['id']
+            self.assertEqual(1, resp.json)
+            machine_id = resp.json
 
             # add a state
             resp = assert_response_type(
@@ -477,14 +619,14 @@ class TestMachineState(unittest.TestCase):
             self.assertEqual(1, resp.json)
 
     def test_error_on_condition_changed(self) -> None:
-        with client_fixture() as client:
+        with client_fixture() as (client, _):
             # add a machine
             resp = assert_response_type(
                 client.post(
-                    '/api/v1/put_machine', json={'name': 'some-machine'}))
+                    '/api/v1/machines', json={'name': 'some-machine'}))
             self.assertEqual(200, resp.status_code)
-            self.assertDictEqual({"id": 1, "version": 1}, resp.json)
-            machine_id = resp.json['id']
+            self.assertEqual(1, resp.json)
+            machine_id = resp.json
 
             # add a state
             resp = assert_response_type(

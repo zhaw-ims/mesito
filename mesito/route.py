@@ -10,42 +10,80 @@ import mesito.front.out
 import mesito.operation
 
 
-def put_machine(session_factory: sqlalchemy.orm.scoped_session) -> Any:  # pylint: disable=unused-variable
-    """Upsert a machine."""
+def post_machine(session_factory: sqlalchemy.orm.scoped_session) -> Any:  # pylint: disable=unused-variable
+    """Post a new machine."""
     session = session_factory()
 
-    data, local_err = mesito.front.valid.machine_put(data=flask.request.json)
+    data, local_err = mesito.front.valid.machine_post(data=flask.request.json)
 
     if local_err is not None:
         return flask.jsonify(local_err), 400
 
     assert data is not None
 
-    machine_id_version, global_err = mesito.operation.put_machine(
+    machine_id, version = mesito.operation.create_machine(
         session=session, data=data)
-
-    if global_err is not None:
-        return flask.jsonify(global_err), 400
-
-    assert machine_id_version is not None
-    machine_id, version = machine_id_version
-
-    assert machine_id is not None, \
-        "Expected machine ID to be set on successful operation"
 
     emission = mesito.front.out.machine_put_emit(
         id=machine_id, name=data["name"], version=version)
 
     flask_socketio.emit("put_machine", emission, broadcast=True, namespace="/")
 
-    return flask.jsonify({'id': machine_id, 'version': version}), 200
+    return flask.jsonify(machine_id), 200
 
 
-def serve_machines(session_factory: sqlalchemy.orm.scoped_session) -> Any:  # pylint: disable=unused-variable
+# yapf: disable
+def patch_machine(
+        session_factory: sqlalchemy.orm.scoped_session,
+        id: int  # pylint: disable=redefined-builtin
+) -> Any:  # yapf: enable
+    """Patch a machine."""
+    session = session_factory()
+
+    data, local_err = mesito.front.valid.machine_patch(data=flask.request.json)
+
+    if local_err is not None:
+        return flask.jsonify(local_err), 400
+
+    assert data is not None
+
+    version, global_err = mesito.operation.patch_machine(
+        session=session, id=id, data=data)
+
+    if global_err is not None:
+        return flask.jsonify(global_err), 400
+
+    assert version is not None
+
+    emission = mesito.front.out.machine_patch_emit(
+        data=data, id=id, version=version)
+
+    flask_socketio.emit("put_machine", emission, broadcast=True, namespace="/")
+
+    return flask.jsonify(version), 200
+
+# yapf: disable
+def delete_machine(
+        session_factory: sqlalchemy.orm.scoped_session,
+        id: int  # pylint: disable=redefined-builtin
+) -> Any:  # yapf: enable
+    """Delete a machine."""
+    session = session_factory()
+
+    mesito.operation.delete_machine(session=session, id=id)
+
+    emission = mesito.front.out.machine_delete_emit(id=id)
+    flask_socketio.emit(
+        "delete_machine", emission, broadcast=True, namespace="/")
+
+    return '', 200
+
+
+def get_machines(session_factory: sqlalchemy.orm.scoped_session) -> Any:  # pylint: disable=unused-variable
     """Serve the list of all machines."""
     session = session_factory()
 
-    machines = mesito.operation.get_machines(session=session)
+    machines = mesito.operation.machines(session=session)
 
     return flask.jsonify(machines)
 

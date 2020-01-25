@@ -11,16 +11,9 @@ import mesito.model
 # Pylint fires false positive on TypedDict and JSON schema definitions.
 # pylint: disable=invalid-name
 
-_machine_put = fastjsonschema.compile({
+_machine_post = fastjsonschema.compile({
     'type': 'object',
     'properties': {
-        'id': {
-            'type':
-            'integer',
-            'description':
-            'machine ID; '
-            'if not provided, a new machine should be created.'
-        },
         'name': {
             'type': 'string',
             'description': 'machine name'
@@ -30,25 +23,21 @@ _machine_put = fastjsonschema.compile({
 })
 
 
-class _MachinePutMandatory(TypedDict):
+class MachinePost(TypedDict):
+    """
+    Define a request to create a new machine.
+
+    Produce with :func:`machine_post`.
+    """
+
     name: str
 
 
-class MachinePut(_MachinePutMandatory, total=False):
-    """
-    Define a request to upsert a machine.
-
-    Produce with :func:`machine_put`.
-    """
-
-    id: int
-
-
 # yapf: disable
-def machine_put(
+def machine_post(
         data: Any
 ) -> Tuple[
-    Optional[MachinePut],
+    Optional[MachinePost],
     Optional[mesito.front.error.SchemaViolation]]:  # yapf: enable
     """
     Validate and cast the input data.
@@ -57,10 +46,61 @@ def machine_put(
     :return: cast, error message if any
     """
     try:
-        _machine_put(data)
-        return typing.cast(MachinePut, data), None
+        _machine_post(data)
+        return typing.cast(MachinePost, data), None
     except fastjsonschema.JsonSchemaException as err:
         return None, mesito.front.error.schema_violation(why=str(err))
+
+
+_machine_patch = fastjsonschema.compile({
+    'type': 'object',
+    'properties': {
+        'name': {
+            'type': 'string',
+            'description': 'machine name'
+        }
+    },
+    "additionalProperties": False
+})
+
+
+class MachinePatch(TypedDict, total=False):
+    """
+    Define a request to patch a machine.
+
+    Produce with :func:`machine_patch`.
+    """
+
+    name: str
+
+
+# yapf: disable
+def machine_patch(
+        data: Any
+) -> Tuple[
+    Optional[MachinePatch],
+    Optional[
+        Union[
+            mesito.front.error.SchemaViolation,
+            mesito.front.error.ConstraintViolation]]]:  # yapf: enable
+    """
+    Validate and cast the input data.
+
+    :param data: JSON data
+    :return: cast, error message if any
+    """
+    result = None  # type: Optional[MachinePatch]
+    try:
+        _machine_patch(data)
+        result = typing.cast(MachinePatch, data)
+    except fastjsonschema.JsonSchemaException as err:
+        return None, mesito.front.error.schema_violation(why=str(err))
+
+    if len(data) == 0:
+        return None, mesito.front.error.constraint_violation(why="Empty patch")
+
+    return result, None
+
 
 _machine_state_put = fastjsonschema.compile({
     'type':
