@@ -1,9 +1,9 @@
 """Implement operations to be executed by the back end."""
-from typing import List, Tuple, Optional, Union
+from typing import List, Tuple, Optional, Union, Set
 
+import icontract
 import sqlalchemy.orm
-from icontract._decorators import ensure
-from icontract._globals import SLOW
+from icontract import ensure, snapshot
 
 import mesito.front.error
 import mesito.front.out
@@ -12,6 +12,9 @@ import mesito.model
 
 # This is necessary due to widespread usage of ``id``.
 # pylint: disable=redefined-builtin
+
+# Pylint's unnecessary lambdas are false positives.
+# pylint: disable=unnecessary-lambda
 
 
 # yapf: disable
@@ -49,6 +52,11 @@ def machines(
     return result
 
 
+def machine_id_set(session: sqlalchemy.orm.Session) -> Set[int]:
+    """Retrieve the set of all machine IDs."""
+    return {item[0] for item in session.query(mesito.model.Machine.id).all()}
+
+
 def created_machine_conforms_to_data(
         session: sqlalchemy.orm.Session,
         data: mesito.front.valid.MachinePost,
@@ -64,8 +72,20 @@ def created_machine_conforms_to_data(
 
 
 # yapf: disable
+@snapshot(
+    lambda session: machine_id_set(session),
+    name='machine_id_set',
+    enabled=icontract.SLOW
+)
 @ensure(lambda result: result[1] == 1, "Initial version is 1.")
-@ensure(created_machine_conforms_to_data, enabled=SLOW)
+@ensure(created_machine_conforms_to_data, enabled=icontract.SLOW)
+@ensure(
+    lambda data, session, result, OLD:
+    result[0] not in OLD.machine_id_set and
+    machine_id_set(session) == OLD.machine_id_set | {result[0]},
+    'Machine ID set grows at exactly one element which is the new machine.',
+    enabled=icontract.SLOW
+)
 def create_machine(
         session: sqlalchemy.orm.Session,
         data: mesito.front.valid.MachinePost
@@ -111,9 +131,17 @@ def patched_machine_conforms_to_data(
 
 
 # yapf: disable
+@snapshot(
+    lambda session: machine_id_set(session),
+    name='machine_id_set',
+    enabled=icontract.SLOW
+)
 @ensure(lambda result: (result[0] is None) ^ (result[1] is None),
         "Either a valid result or an error")
-@ensure(patched_machine_conforms_to_data, enabled=SLOW)
+@ensure(patched_machine_conforms_to_data, enabled=icontract.SLOW)
+@ensure(lambda session, OLD: machine_id_set(session) == OLD.machine_id_set,
+        "No new machine is added.",
+        enabled=icontract.SLOW)
 def patch_machine(
         session: sqlalchemy.orm.Session,
         id: int,
@@ -160,6 +188,12 @@ def delete_machine(
     session.query(mesito.model.Machine).filter_by(id=id).delete()
 
     session.commit()
+
+
+def machine_state_id_set(session: sqlalchemy.orm.Session) -> Set[int]:
+    """Retrieve the set of all machine state IDs."""
+    return {item[0] for item in session.query(
+        mesito.model.MachineState.id).all()}
 
 
 def find_machine_state(
@@ -217,7 +251,74 @@ def machine_state_overlap(
     return first.start, first.stop
 
 
+def machine_state_overlap_with_id(
+        machine_state_id: int,
+        session: sqlalchemy.orm.Session,
+) -> Optional[Tuple[int, int]]:
+    """Check that the machine state does not overlap any other machine state."""
+    machine_state = session.query(
+        mesito.model.MachineState).get(machine_state_id)
+
+    assert machine_state is not None, \
+        "Expected a machine state in the database with the ID: {}".format(
+            machine_state_id)
+
+    overlap = machine_state_overlap(
+        machine_id=machine_state.machine_id,
+        start=machine_state.start,
+        stop=machine_state.stop,
+        session=session)
+
+    return overlap
+
+
 # yapf: disable
+@snapshot(
+    lambda session: machine_state_id_set(session),
+    name='machine_state_id_set',
+    enabled=icontract.SLOW
+)
+@snapshot(
+    lambda session, data: find_machine_state(
+        session, data['machine_id'], data['start']),
+    name='state',
+    enabled=icontract.SLOW
+)
+@ensure(
+    lambda session, OLD, result:
+    result[0] is None or OLD.state is None or
+    machine_state_id_set(session) == OLD.machine_state_id_set,
+    'No new machine state is created on update.',
+    enabled=icontract.SLOW
+)
+@ensure(
+    lambda session, OLD, result:
+    result[0] is None or OLD.state is not None or (
+            result[0] not in OLD.machine_state_id_set and
+            machine_state_id_set(session) == OLD.machine_state_id_set | {
+                result[0]}
+    ),
+    'Machine states grow on insert.',
+    enabled=icontract.SLOW
+)
+@ensure(
+    lambda session, result:
+    result[0] is None or
+    machine_state_overlap_with_id(
+        machine_state_id=result[0], session=session) is None,
+    'Upsert introduces no overlap between machine states.',
+    enabled=icontract.SLOW
+)
+@ensure(
+    lambda session, data, result:
+    result[0] is None or (
+            find_machine_state(  # type: ignore
+                session, data['machine_id'], data['start']).id == result[0]),
+    'Result corresponds to the upserted state.',
+    enabled=icontract.SLOW
+)
+@ensure(lambda result: (result[0] is None) ^ (result[1] is None),
+        "Either result or an error is returned.")
 def put_machine_state(
         session: sqlalchemy.orm.Session,
         data: mesito.front.valid.MachineStatePut
@@ -246,7 +347,7 @@ def put_machine_state(
         return None, mesito.front.error.machine_not_found(
             machine_id=data['machine_id'])
 
-    machine_state = find_machine_state(
+    machi_st = find_machine_state(
         session=session, machine_id=data['machine_id'], start=data['start'])
 
     ##
@@ -254,10 +355,10 @@ def put_machine_state(
     ##
 
     # Existing machine state must not change condition.
-    if (machine_state is not None
-            and machine_state.condition != data['condition']):
+    if (machi_st is not None
+            and machi_st.condition != data['condition']):
         return None, mesito.front.error.machine_state_condition_changed(
-            old=machine_state.condition,
+            old=machi_st.condition,
             new=data['condition'])
 
     other_start_stop = machine_state_overlap(
@@ -273,28 +374,28 @@ def put_machine_state(
     # Upsert
     ##
 
-    if machine_state is None:
-        machine_state = mesito.model.MachineState()
-        machine_state.machine_id = data['machine_id']
-        machine_state.start = data['start']
+    if machi_st is None:
+        machi_st = mesito.model.MachineState()
+        machi_st.machine_id = data['machine_id']
+        machi_st.start = data['start']
 
-    machine_state.stop = data['stop']
-    machine_state.condition = data['condition']
+    machi_st.stop = data['stop']
+    machi_st.condition = data['condition']
 
-    machine_state.min_power_consumption = data.get(
+    machi_st.min_power_consumption = data.get(
         'min_power_consumption', None)
 
-    machine_state.max_power_consumption = data.get(
+    machi_st.max_power_consumption = data.get(
         'max_power_consumption', None)
 
-    machine_state.avg_power_consumption = data.get(
+    machi_st.avg_power_consumption = data.get(
         'avg_power_consumption', None)
 
-    machine_state.total_energy = data.get('total_energy', None)
+    machi_st.total_energy = data.get('total_energy', None)
 
-    session.add(machine_state)
+    session.add(machi_st)
     session.commit()
 
-    assert isinstance(machine_state.id, int)
+    assert isinstance(machi_st.id, int)
 
-    return machine_state.id, None
+    return machi_st.id, None
